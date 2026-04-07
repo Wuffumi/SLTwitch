@@ -7,36 +7,63 @@ const PORT = process.env.PORT || 3000;
 const TWITCH_CLIENT_ID = process.env.TWITCH_CLIENT_ID;
 const TWITCH_TOKEN = process.env.TWITCH_TOKEN;
 
+/*
+  GET TWITCH USER INFO (PROFILE IMAGE, ID)
+*/
 async function getTwitchUser(username)
 {
-    const url = `https://api.twitch.tv/helix/users?login=${username}`;
+    try
+    {
+        const url = `https://api.twitch.tv/helix/users?login=${username}`;
 
-    const res = await fetch(url, {
-        headers: {
-            "Client-ID": TWITCH_CLIENT_ID,
-            "Authorization": `Bearer ${TWITCH_TOKEN}`
-        }
-    });
+        const res = await fetch(url, {
+            headers: {
+                "Client-ID": TWITCH_CLIENT_ID,
+                "Authorization": `Bearer ${TWITCH_TOKEN}`
+            }
+        });
 
-    const data = await res.json();
-    return data?.data?.[0] || null;
+        const data = await res.json();
+
+        return data?.data?.[0] || null;
+    }
+    catch (e)
+    {
+        console.log("User fetch error:", e);
+        return null;
+    }
 }
 
+/*
+  GET STREAM INFO (LIVE GAME + VIEWERS)
+*/
 async function getStream(username)
 {
-    const url = `https://api.twitch.tv/helix/streams?user_login=${username}`;
+    try
+    {
+        const url = `https://api.twitch.tv/helix/streams?user_login=${username}`;
 
-    const res = await fetch(url, {
-        headers: {
-            "Client-ID": TWITCH_CLIENT_ID,
-            "Authorization": `Bearer ${TWITCH_TOKEN}`
-        }
-    });
+        const res = await fetch(url, {
+            headers: {
+                "Client-ID": TWITCH_CLIENT_ID,
+                "Authorization": `Bearer ${TWITCH_TOKEN}`
+            }
+        });
 
-    const data = await res.json();
-    return data?.data?.[0] || null;
+        const data = await res.json();
+
+        return data?.data?.[0] || null;
+    }
+    catch (e)
+    {
+        console.log("Stream fetch error:", e);
+        return null;
+    }
 }
 
+/*
+  MAIN API ENDPOINT
+*/
 app.get("/twitch", async (req, res) =>
 {
     try
@@ -55,10 +82,14 @@ app.get("/twitch", async (req, res) =>
         const userData = await getTwitchUser(user);
         const streamData = await getStream(user);
 
-        // SAFE FALLBACK (this fixes your crash)
+        // SAFE PROFILE IMAGE (ALWAYS FROM USER API)
         const profile_image = userData?.profile_image_url || "";
-        const game_name = streamData?.game_name || "Offline";
-        const viewer_count = streamData?.viewer_count || 0;
+
+        // STREAM DATA ONLY IF LIVE
+        const isLive = streamData !== null;
+
+        const game_name = isLive ? (streamData?.game_name || "Live") : "Offline";
+        const viewer_count = isLive ? (streamData?.viewer_count || 0) : 0;
 
         return res.json({
             profile_image,
@@ -68,7 +99,7 @@ app.get("/twitch", async (req, res) =>
     }
     catch (err)
     {
-        console.log("ERROR:", err);
+        console.log("GLOBAL ERROR:", err);
 
         return res.json({
             profile_image: "",
@@ -78,9 +109,12 @@ app.get("/twitch", async (req, res) =>
     }
 });
 
+/*
+  HEALTH CHECK
+*/
 app.get("/", (req, res) =>
 {
-    res.send("SL Twitch API running");
+    res.send("SL Twitch API Running");
 });
 
 app.listen(PORT, () =>
