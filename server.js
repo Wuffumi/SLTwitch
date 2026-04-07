@@ -2,64 +2,88 @@ import express from "express";
 import fetch from "node-fetch";
 
 const app = express();
+const PORT = process.env.PORT || 3000;
 
-const PORT = process.env.PORT || 10000;
+const TWITCH_CLIENT_ID = process.env.TWITCH_CLIENT_ID;
+const TWITCH_TOKEN = process.env.TWITCH_TOKEN;
 
-app.get("/twitch", async (req, res) => {
-  const username = req.query.user;
+async function getTwitchUser(username)
+{
+    const url = `https://api.twitch.tv/helix/users?login=${username}`;
 
-  if (!username) {
-    return res.status(400).json({ error: "Missing user" });
-  }
-
-  const CLIENT_ID = process.env.TWITCH_CLIENT_ID;
-  const CLIENT_SECRET = process.env.TWITCH_CLIENT_SECRET;
-
-  try {
-    // Get token
-    const tokenRes = await fetch("https://id.twitch.tv/oauth2/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: `client_id=${CLIENT_ID}&client_secret=${CLIENT_SECRET}&grant_type=client_credentials`
+    const res = await fetch(url, {
+        headers: {
+            "Client-ID": TWITCH_CLIENT_ID,
+            "Authorization": `Bearer ${TWITCH_TOKEN}`
+        }
     });
 
-    const tokenData = await tokenRes.json();
-    const token = tokenData.access_token;
+    const data = await res.json();
+    return data?.data?.[0] || null;
+}
 
-    // User info
-    const userRes = await fetch(`https://api.twitch.tv/helix/users?login=${username}`, {
-      headers: {
-        "Client-ID": CLIENT_ID,
-        "Authorization": `Bearer ${token}`
-      }
+async function getStream(username)
+{
+    const url = `https://api.twitch.tv/helix/streams?user_login=${username}`;
+
+    const res = await fetch(url, {
+        headers: {
+            "Client-ID": TWITCH_CLIENT_ID,
+            "Authorization": `Bearer ${TWITCH_TOKEN}`
+        }
     });
 
-    const userData = await userRes.json();
-    const user = userData.data[0];
+    const data = await res.json();
+    return data?.data?.[0] || null;
+}
 
-    // Stream info
-    const streamRes = await fetch(`https://api.twitch.tv/helix/streams?user_login=${username}`, {
-      headers: {
-        "Client-ID": CLIENT_ID,
-        "Authorization": `Bearer ${token}`
-      }
-    });
+app.get("/twitch", async (req, res) =>
+{
+    try
+    {
+        const user = (req.query.user || "").toLowerCase().trim();
 
-    const streamData = await streamRes.json();
-    const stream = streamData.data[0];
+        if (!user)
+        {
+            return res.json({
+                profile_image: "",
+                game_name: "No user",
+                viewer_count: 0
+            });
+        }
 
-    res.json({
-      profile_image: user.profile_image_url,
-      game_name: stream ? stream.game_name : "Offline",
-      viewer_count: stream ? stream.viewer_count : 0,
-      url: `https://twitch.tv/${username}`
-    });
+        const userData = await getTwitchUser(user);
+        const streamData = await getStream(user);
 
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+        // SAFE FALLBACK (this fixes your crash)
+        const profile_image = userData?.profile_image_url || "";
+        const game_name = streamData?.game_name || "Offline";
+        const viewer_count = streamData?.viewer_count || 0;
+
+        return res.json({
+            profile_image,
+            game_name,
+            viewer_count
+        });
+    }
+    catch (err)
+    {
+        console.log("ERROR:", err);
+
+        return res.json({
+            profile_image: "",
+            game_name: "Offline",
+            viewer_count: 0
+        });
+    }
 });
 
-app.listen(PORT, () => {
-  console.log("Server running on port " + PORT);
+app.get("/", (req, res) =>
+{
+    res.send("SL Twitch API running");
+});
+
+app.listen(PORT, () =>
+{
+    console.log("Server running on port " + PORT);
 });
